@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Word内容控件编辑器（Base64图片修复版）</title>
+    <title>Word内容控件编辑器（原位替换图片版）</title>
     <!-- 引入外部资源 -->
     <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
     <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
@@ -156,7 +156,7 @@
             <el-header style="background-color: #1890ff; color: white; padding: 0 20px;">
                 <div style="display: flex; align-items: center; height: 100%;">
                     <i class="fa fa-file-word-o" style="font-size: 20px; margin-right: 10px;"></i>
-                    <h1 style="margin: 0; font-size: 18px;">Word内容控件编辑器（Base64图片修复版）</h1>
+                    <h1 style="margin: 0; font-size: 18px;">Word内容控件编辑器（原位替换图片版）</h1>
                 </div>
             </el-header>
 
@@ -276,20 +276,12 @@
                                         <el-tag type="info" style="margin-left: 10px;">
                                             {{ control.imageFileName || '未知图片' }}
                                         </el-tag>
-                                        <el-descriptions-item label="Base64状态">
-                                            <el-tag :type="control.base64Status === '成功' ? 'success' : 'danger'">
-                                                {{ control.base64Status }}
-                                            </el-tag>
-                                        </el-descriptions-item>
                                         <el-descriptions-item label="当前图片">
                                             <div v-if="control.imageUrl" class="image-preview-container">
                                                 <img :src="control.imageUrl" class="image-preview" :alt="control.alias || '图片预览'">
                                             </div>
                                             <div v-else class="text-gray-500 text-sm">
                                                 <i class="fa fa-exclamation-triangle text-orange-500"></i> 无法预览图片
-                                                <div v-if="control.debugInfo" class="debug-info">
-                                                    {{ control.debugInfo }}
-                                                </div>
                                             </div>
                                         </el-descriptions-item>
                                         <el-descriptions-item label="更换图片">
@@ -311,7 +303,7 @@
                                                    @click="applyChange(index)"
                                                    :loading="isProcessing"
                                                    :disabled="!control.imageChanged">
-                                            <i class="fa fa-check"></i> 应用图片
+                                            <i class="fa fa-check"></i> 替换图片
                                         </el-button>
                                     </div>
                                 </div>
@@ -326,7 +318,7 @@
                                         <i class="fa fa-eye" style="margin-right: 5px;"></i>文档预览
                                     </el-tab-pane>
                                     <el-tab-pane label="媒体文件" name="media">
-                                        <i class="fa fa-file-image-o" style="margin-right: 5px;"></i>媒体文件(Base64)
+                                        <i class="fa fa-file-image-o" style="margin-right: 5px;"></i>媒体文件
                                     </el-tab-pane>
                                 </el-tabs>
                             </el-card-header>
@@ -339,7 +331,7 @@
                                 <div v-else v-html="previewHtml"></div>
                             </div>
 
-                            <!-- 媒体文件标签页 - 显示所有转换为Base64的图片 -->
+                            <!-- 媒体文件标签页 -->
                             <div class="preview-content" v-if="activeTab === 'media'">
                                 <el-table :data="mediaFileTableData"
                                           border
@@ -358,15 +350,6 @@
                                                      width="100">
                                         <template slot-scope="scope">
                                             {{ (scope.row.size / 1024).toFixed(2) }} KB
-                                        </template>
-                                    </el-table-column>
-                                    <el-table-column prop="status"
-                                                     label="Base64转换"
-                                                     width="120">
-                                        <template slot-scope="scope">
-                                            <el-tag :type="scope.row.status === '成功' ? 'success' : 'danger'">
-                                                {{ scope.row.status }}
-                                            </el-tag>
                                         </template>
                                     </el-table-column>
                                     <el-table-column prop="preview"
@@ -431,7 +414,6 @@
                     relationships: {},
                     mediaFiles: {}, // 存储媒体文件 {filename: {base64: "...", size: ..., path: "..."}
                     mediaFileTableData: [], // 媒体文件表格数据
-                    nextImageIndex: 1,
                     isDocumentLoaded: false,
                     isProcessing: false,
 
@@ -441,9 +423,6 @@
                     // 预览相关
                     previewHtml: '',
                     activeTab: 'preview',
-
-                    // 操作日志
-                    operationLogs: [],
 
                     // 调试信息
                     debugInfo: [],
@@ -557,22 +536,20 @@
                             this.relationships = {};
                         }
 
-                        // 收集媒体文件并强制转换为Base64 - 核心修复点
+                        // 收集媒体文件并转换为Base64
                         this.mediaFiles = {};
                         this.mediaFileTableData = [];
                         const mediaFiles = zip.file(/word\/media\//i);
                         this.addDebugInfo(`找到 ${mediaFiles.length} 个媒体文件`);
 
                         for (const mediaFile of mediaFiles) {
-                            const fullPath = mediaFile.name; // 完整路径如word/media/image1.png
-                            const fileName = fullPath.replace(/^word\/media\//i, ''); // 提取文件名如image1.png
+                            const fullPath = mediaFile.name;
+                            const fileName = fullPath.replace(/^word\/media\//i, '');
 
                             try {
-                                // 强制读取为Base64，不依赖路径解析
                                 const base64Data = await mediaFile.async('base64');
                                 const fileSize = await mediaFile.async('uint8array').then(arr => arr.length);
 
-                                // 存储Base64数据和文件信息
                                 this.mediaFiles[fileName] = {
                                     base64: base64Data,
                                     size: fileSize,
@@ -580,25 +557,16 @@
                                     base64Url: `data:image/*;base64,${base64Data}`
                                 };
 
-                                // 添加到媒体文件表格
                                 this.mediaFileTableData.push({
                                     fileName,
                                     path: fullPath,
                                     size: fileSize,
-                                    status: "成功",
                                     base64Url: `data:image/*;base64,${base64Data}`
                                 });
 
-                                this.addDebugInfo(`已将 ${fullPath} 转换为Base64，大小: ${(fileSize / 1024).toFixed(2)}KB`);
+                                this.addDebugInfo(`已加载媒体文件: ${fullPath}`);
                             } catch (e) {
-                                this.addDebugInfo(`转换 ${fullPath} 为Base64失败: ${e.message}`);
-                                this.mediaFileTableData.push({
-                                    fileName,
-                                    path: fullPath,
-                                    size: 0,
-                                    status: "失败",
-                                    base64Url: null
-                                });
+                                this.addDebugInfo(`读取媒体文件 ${fullPath} 失败: ${e.message}`);
                             }
                         }
 
@@ -609,8 +577,7 @@
                         this.generatePreview();
 
                         this.isDocumentLoaded = true;
-                        this.showNotification('文档加载成功，已将媒体文件转换为Base64', 'success');
-                        this.addOperationLog('文档加载成功', 'success', 'fa-file-text-o');
+                        this.showNotification('文档加载成功', 'success');
                     } catch (error) {
                         console.error('处理文件出错:', error);
                         this.addDebugInfo(`处理失败: ${error.message}`);
@@ -620,7 +587,7 @@
                     }
                 },
 
-                // 提取内容控件 - 重点使用Base64显示图片
+                // 提取内容控件
                 extractContentControls() {
                     const parser = new DOMParser();
                     const xmlDoc = parser.parseFromString(this.documentXmlContent, 'text/xml');
@@ -668,20 +635,16 @@
                             alias,
                             tag,
                             isImage,
-                            imageUrl: null,       // Base64图片URL
-                            imageData: null,      // Base64数据
-                            imageRelId: null,     // 关系ID
-                            imageFileName: null,  // 图片文件名
-                            base64Status: "未尝试", // Base64转换状态
+                            imageUrl: null,
+                            imageData: null,
+                            imageRelId: null,
+                            imageFileName: null,
                             imageChanged: false,
-                            content: '',
-                            debugInfo: ''
+                            content: ''
                         };
 
-                        // 处理图片控件 - 强制使用Base64
+                        // 处理图片控件
                         if (isImage) {
-                            debugger;
-                            let debugMsgs = [];
                             const sdtContent = node.querySelector('w\\:sdtContent, sdtContent');
 
                             if (sdtContent) {
@@ -692,48 +655,20 @@
                                     // 获取关系ID
                                     controlData.imageRelId = blipNode.getAttribute('r:embed') ||
                                         blipNode.getAttribute('embed');
-                                    debugMsgs.push(`图片引用ID: ${controlData.imageRelId}`);
 
                                     // 查找图片文件名
                                     if (controlData.imageRelId && this.relationships[controlData.imageRelId]) {
                                         const targetPath = this.relationships[controlData.imageRelId];
                                         controlData.imageFileName = targetPath.split('/').pop().split('\\').pop();
-                                        debugMsgs.push(`通过关系找到图片: ${targetPath} → 文件名=${controlData.imageFileName}`);
-                                    }
 
-                                    // 尝试通过文件名直接获取Base64数据 - 核心修复点
-                                    if (controlData.imageFileName) {
-                                        // 不区分大小写查找图片文件
-                                        const lowerFileName = controlData.imageFileName.toLowerCase();
-                                        const matchedFile = Object.keys(this.mediaFiles).find(
-                                            key => key.toLowerCase() === lowerFileName
-                                        );
-
-                                        if (matchedFile && this.mediaFiles[matchedFile].base64) {
-                                            // 直接使用预转换的Base64数据
-                                            controlData.imageUrl = this.mediaFiles[matchedFile].base64Url;
-                                            controlData.imageData = this.mediaFiles[matchedFile].base64;
-                                            controlData.base64Status = "成功";
-                                            debugMsgs.push(`成功加载Base64图片: ${matchedFile}`);
-                                        } else {
-                                            controlData.base64Status = "失败";
-                                            debugMsgs.push(`未找到Base64数据: ${controlData.imageFileName}`);
-                                            debugMsgs.push(`可用图片文件: ${Object.keys(this.mediaFiles).join(', ')}`);
+                                        // 加载图片
+                                        if (controlData.imageFileName && this.mediaFiles[controlData.imageFileName]) {
+                                            controlData.imageUrl = this.mediaFiles[controlData.imageFileName].base64Url;
+                                            controlData.imageData = this.mediaFiles[controlData.imageFileName].base64;
                                         }
-                                    } else {
-                                        controlData.base64Status = "失败";
-                                        debugMsgs.push(`无法确定图片文件名`);
                                     }
-                                } else {
-                                    controlData.base64Status = "失败";
-                                    debugMsgs.push(`未找到图片引用节点(a:blip)`);
                                 }
-                            } else {
-                                controlData.base64Status = "失败";
-                                debugMsgs.push(`未找到sdtContent节点`);
                             }
-
-                            controlData.debugInfo = debugMsgs.join('; ');
                         }
                         // 处理文本控件
                         else {
@@ -797,7 +732,6 @@
                                 } else {
                                     paraText += `<div class="content-control-image" data-id="${id}" style="min-width: 200px; min-height: 100px; text-align: center; line-height: 100px; color: #999;">
                                     [图片内容控件: ${id}]
-                                    ${controlData && controlData.imageFileName ? `<div style="font-size: 10px;">文件: ${controlData.imageFileName}</div>` : ''}
                                   </div>`;
                                 }
                             } else {
@@ -837,11 +771,10 @@
                             ...control,
                             imageUrl: e.target.result,
                             imageData: base64Data,
-                            base64Status: "成功",
                             imageChanged: true
                         });
 
-                        this.showNotification('图片已加载为Base64，点击"应用图片"生效', 'info');
+                        this.showNotification('图片已加载，点击"替换图片"生效', 'info');
                     };
 
                     if (file.raw.type.startsWith('image/')) {
@@ -853,7 +786,6 @@
 
                 // 应用单个控件的更改
                 applyChange(index) {
-                    debugger
                     if (!this.originalZip) return;
 
                     const control = this.contentControls[index];
@@ -863,9 +795,12 @@
                         this.isProcessing = true;
 
                         if (control.isImage) {
-                            if (control.imageChanged && control.imageData) {
+                            if (control.imageChanged && control.imageData && control.imageFileName) {
+                                // 仅替换原始图片文件内容，不修改文件名和关系
                                 this.updateImageControlInXml(control);
-                                this.showNotification(`已更新图片控件 ID: ${control.id}`, 'success');
+                                this.showNotification(`已替换图片: ${control.imageFileName}`, 'success');
+                            } else if (!control.imageFileName) {
+                                this.showNotification('未找到原始图片文件名，无法替换', 'warning');
                             } else {
                                 this.showNotification('未更改图片或图片数据无效', 'warning');
                             }
@@ -874,9 +809,11 @@
                             this.showNotification(`已更新文本控件 ID: ${control.id}`, 'success');
                         }
 
+                        // 重新生成预览
                         this.generatePreview();
                     } catch (error) {
                         console.error('更新内容控件出错:', error);
+                        this.addDebugInfo(`更新失败: ${error.message}`);
                         this.showNotification('更新失败，请重试', 'error');
                     } finally {
                         this.isProcessing = false;
@@ -893,7 +830,7 @@
 
                         this.contentControls.forEach(control => {
                             if (control.isImage) {
-                                if (control.imageChanged && control.imageData) {
+                                if (control.imageChanged && control.imageData && control.imageFileName) {
                                     this.updateImageControlInXml(control);
                                     changesApplied = true;
                                 }
@@ -959,127 +896,40 @@
                     }
                 },
 
-                // 更新图片控件
+                // 核心修改：仅替换原始图片文件的内容，不创建新文件或修改关系
                 updateImageControlInXml(control) {
-                    // 1. 生成新图片文件名
-                    const fileExt = control.imageUrl.split(';')[0].split('/')[1];
-                    const newFileName = `image${this.nextImageIndex}.${fileExt}`;
-                    this.nextImageIndex++;
-
-                    // 2. 更新ZIP中的媒体文件
-                    const imageBlob = this.base64ToBlob(control.imageData, `image/${fileExt}`);
-                    this.originalZip.file(`word/media/${newFileName}`, imageBlob);
-                    this.addDebugInfo(`已添加新图片文件: word/media/${newFileName}`);
-
-                    // 3. 更新关系文件
-                    this.updateRelationships(control, newFileName);
-
-                    // 4. 更新document.xml中的图片引用
-                    this.updateImageReferenceInDocument(control, newFileName);
-
-                    // 5. 更新控件数据和媒体文件列表
-                    const index = this.contentControls.findIndex(c => c.id === control.id);
-                    if (index !== -1) {
-                        this.$set(this.contentControls, index, {
-                            ...control,
-                            imageFileName: newFileName,
-                            base64Status: "成功",
-                            imageChanged: false,
-                        });
+                    // 1. 确保我们有原始图片文件名（如image1.png）
+                    if (!control.imageFileName) {
+                        throw new Error('没有原始图片文件名，无法进行原位替换');
                     }
 
-                    // 更新媒体文件数据
-                    this.mediaFiles[newFileName] = {
+                    // 2. 确定图片的MIME类型
+                    let mimeType = 'image/png'; // 默认类型
+                    if (control.imageUrl && control.imageUrl.startsWith('data:')) {
+                        mimeType = control.imageUrl.split(';')[0].slice(5);
+                    }
+
+                    // 3. 将Base64数据转换为Blob
+                    const imageBlob = this.base64ToBlob(control.imageData, mimeType);
+
+                    // 4. 直接替换原始图片文件内容，保持原文件名和路径
+                    const imagePath = `word/media/${control.imageFileName}`;
+                    this.originalZip.file(imagePath, imageBlob);
+
+                    // 5. 更新媒体文件缓存中的数据
+                    this.mediaFiles[control.imageFileName] = {
+                        ...this.mediaFiles[control.imageFileName],
                         base64: control.imageData,
-                        size: control.imageData.length * 0.75, // 近似计算
-                        path: `word/media/${newFileName}`,
-                        base64Url: control.imageUrl
+                        base64Url: control.imageUrl,
+                        size: control.imageData.length * 0.75 // 近似计算
                     };
 
-                    this.mediaFileTableData.push({
-                        fileName: newFileName,
-                        path: `word/media/${newFileName}`,
-                        size: control.imageData.length * 0.75,
-                        status: "成功",
-                        base64Url: control.imageUrl
-                    });
-                },
+                    // 6. 更新控件状态
+                    control.imageChanged = false;
 
-                // 更新关系文件
-                updateRelationships(control, newFileName) {
-                    if (!this.documentRelsContent) {
-                        this.documentRelsContent = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-</Relationships>`;
-                    }
+                    this.addDebugInfo(`已替换原始图片文件内容: ${imagePath}`);
 
-                    const parser = new DOMParser();
-                    const relsDoc = parser.parseFromString(this.documentRelsContent, 'text/xml');
-
-                    let relNode;
-                    if (control.imageRelId) {
-                        relNode = relsDoc.querySelector(`Relationship[Id="${control.imageRelId}"]`) ||
-                            relsDoc.querySelector(`*|Relationship[Id="${control.imageRelId}"]`);
-                    }
-
-                    if (!relNode) {
-                        const newRelId = `rId${Math.floor(Math.random() * 1000)}`;
-                        control.imageRelId = newRelId;
-                        const ns = 'http://schemas.openxmlformats.org/package/2006/relationships';
-                        relNode = relsDoc.createElementNS(ns, 'Relationship');
-                        relNode.setAttribute('Id', newRelId);
-                        relsDoc.documentElement.appendChild(relNode);
-                    }
-
-                    relNode.setAttribute('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image');
-                    relNode.setAttribute('Target', `media/${newFileName}`);
-                    this.relationships[control.imageRelId] = `media/${newFileName}`;
-
-                    // 更新关系文件内容
-                    const serializer = new XMLSerializer();
-                    this.documentRelsContent = serializer.serializeToString(relsDoc);
-                    this.originalZip.file('word/_rels/document.xml.rels', this.documentRelsContent);
-                },
-
-                // 更新文档中的图片引用
-                updateImageReferenceInDocument(control, newFileName) {
-                    const parser = new DOMParser();
-                    const xmlDoc = parser.parseFromString(this.documentXmlContent, 'text/xml');
-
-                    const nsResolver = (prefix) => {
-                        const ns = {
-                            'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
-                            'a': 'http://schemas.openxmlformats.org/drawingml/2006/main'
-                        };
-                        return ns[prefix] || null;
-                    };
-
-                    // 查找图片引用节点
-                    const xpath = `//w:sdt[.//w:id[@w:val="${control.id}"]]//a:blip`;
-                    const result = xmlDoc.evaluate(xpath, xmlDoc, nsResolver, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                    let blipNode = result.singleNodeValue;
-
-                    if (!blipNode) {
-                        const xpath2 = `//w:sdt[.//w:id[@w:val="${control.id}"]]//blip`;
-                        const result2 = xmlDoc.evaluate(xpath2, xmlDoc, nsResolver, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                        blipNode = result2.singleNodeValue;
-                    }
-
-                    if (blipNode) {
-                        if (blipNode.hasAttribute('r:embed')) {
-                            blipNode.setAttribute('r:embed', control.imageRelId);
-                        } else if (blipNode.hasAttribute('embed')) {
-                            blipNode.setAttribute('embed', control.imageRelId);
-                        } else {
-                            blipNode.setAttribute('r:embed', control.imageRelId);
-                        }
-                    } else {
-                        throw new Error('未找到图片引用节点');
-                    }
-
-                    // 更新XML内容
-                    const serializer = new XMLSerializer();
-                    this.documentXmlContent = serializer.serializeToString(xmlDoc);
+                    // 注意：不修改任何关系文件和引用，保持原有结构
                 },
 
                 // 下载修改后的文档
@@ -1088,9 +938,18 @@
 
                     try {
                         this.isProcessing = true;
-                        this.originalZip.file('word/document.xml', this.documentXmlContent);
-                        const content = await this.originalZip.generateAsync({ type: 'blob' });
 
+                        // 更新ZIP中的document.xml
+                        this.originalZip.file('word/document.xml', this.documentXmlContent);
+
+                        // 生成修改后的ZIP文件
+                        const content = await this.originalZip.generateAsync({
+                            type: 'blob',
+                            compression: 'DEFLATE',
+                            compressionOptions: { level: 6 }
+                        });
+
+                        // 创建下载链接
                         const url = URL.createObjectURL(content);
                         const a = document.createElement('a');
                         a.href = url;
@@ -1098,6 +957,7 @@
                         document.body.appendChild(a);
                         a.click();
 
+                        // 清理
                         setTimeout(() => {
                             document.body.removeChild(a);
                             URL.revokeObjectURL(url);
@@ -1106,6 +966,7 @@
                         this.showNotification('文档已下载', 'success');
                     } catch (error) {
                         console.error('生成文档出错:', error);
+                        this.addDebugInfo(`下载失败: ${error.message}`);
                         this.showNotification('下载失败，请重试', 'error');
                     } finally {
                         this.isProcessing = false;
@@ -1141,25 +1002,6 @@
                     };
 
                     setTimeout(() => this.notification.show = false, 3000);
-                },
-
-                // 添加操作日志
-                addOperationLog(message, type, icon) {
-                    this.operationLogs.unshift({
-                        time: new Date(),
-                        message: message,
-                        type: type,
-                        icon: icon
-                    });
-
-                    if (this.operationLogs.length > 20) {
-                        this.operationLogs.pop();
-                    }
-                },
-
-                // 格式化时间
-                formatTime(date) {
-                    return date.toLocaleString();
                 },
 
                 // 读取文件为ArrayBuffer
