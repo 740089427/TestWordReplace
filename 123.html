@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Word内容控件编辑器（原位替换图片版）</title>
+    <title>Word内容控件编辑器（支持重复分区）</title>
     <!-- 引入外部资源 -->
     <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
     <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
     <script src="https://unpkg.com/element-ui/lib/index.js"></script>
-    <!--<script src="C:\Users\L-pengbingguang\Desktop\jszip.min.js"></script>-->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="C:\Users\L-pengbingguang\Desktop\jszip.min.js"></script>
+
+    <!--<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>-->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
 
     <style>
@@ -104,6 +105,13 @@
             display: inline-block;
         }
 
+        .content-control-repeating {
+            border: 2px dashed #722ed1;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+
         .image-preview {
             max-width: 100%;
             max-height: 200px;
@@ -129,6 +137,15 @@
             padding: 5px;
             background-color: #f5f5f5;
             border-radius: 3px;
+        }
+
+        .repeating-section-example {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-top: 10px;
+            font-family: monospace;
         }
 
         ::-webkit-scrollbar {
@@ -157,7 +174,7 @@
             <el-header style="background-color: #1890ff; color: white; padding: 0 20px;">
                 <div style="display: flex; align-items: center; height: 100%;">
                     <i class="fa fa-file-word-o" style="font-size: 20px; margin-right: 10px;"></i>
-                    <h1 style="margin: 0; font-size: 18px;">Word内容控件编辑器（原位替换图片版）</h1>
+                    <h1 style="margin: 0; font-size: 18px;">Word内容控件编辑器（支持重复分区）</h1>
                 </div>
             </el-header>
 
@@ -209,15 +226,15 @@
                                         <i class="fa fa-check"></i> 应用所有更改
                                     </el-button>
                                 </el-card-header>
-                                <el-badge :value="contentControls.length" type="primary">
-                                    内容控件
+                                <el-badge :value="contentControls.length + repeatingSections.length" type="primary">
+                                    内容控件总数
                                 </el-badge>
                             </div>
 
                             <div class="controls-list">
-                                <div v-if="contentControls.length === 0" style="text-align: center; padding: 20px; color: #999;">
+                                <div v-if="contentControls.length === 0 && repeatingSections.length === 0" style="text-align: center; padding: 20px; color: #999;">
                                     <i class="fa fa-search" style="font-size: 32px; margin-bottom: 10px;"></i>
-                                    <p>未找到内容控件</p>
+                                    <p>未找到内容控件或重复分区</p>
                                 </div>
 
                                 <!-- 文本内容控件 -->
@@ -305,6 +322,52 @@
                                                    :loading="isProcessing"
                                                    :disabled="!control.imageChanged">
                                             <i class="fa fa-check"></i> 替换图片
+                                        </el-button>
+                                    </div>
+                                </div>
+
+                                <!-- 重复分区控件 -->
+                                <div v-for="(section, index) in repeatingSections"
+                                     :key="section.id"
+                                     class="control-item">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <span>重复分区控件</span>
+                                        <el-badge type="purple" class="control-type-badge">表格</el-badge>
+                                    </div>
+
+                                    <el-descriptions column="1" border>
+                                        <el-descriptions-item label="分区ID">
+                                            <el-tag type="primary">{{ section.id }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="别名(Alias)">
+                                            <el-tag type="info">{{ section.alias || '无' }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="标签(Tag)">
+                                            <el-tag type="warning">{{ section.tag || '无' }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="列数">
+                                            <el-tag type="info">{{ section.columnsCount }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="数据 (JSON数组)">
+                                            <el-input type="textarea"
+                                                      :rows="6"
+                                                      v-model="section.jsonData"
+                                                      placeholder='请输入JSON数组，例如:[{"C1":"值1","C2":"值2"},{"C1":"值3","C2":"值4"}]'></el-input>
+                                            <div class="repeating-section-example">
+                                                示例:
+                                                <pre>[
+  {"C1": "数据1-1", "C2": "数据1-2", "C3": "数据1-3", "C4": "数据1-4"},
+  {"C1": "数据2-1", "C2": "数据2-2", "C3": "数据2-3", "C4": "数据2-4"}
+]</pre>
+                                            </div>
+                                        </el-descriptions-item>
+                                    </el-descriptions>
+                                    <div style="text-align: right; margin-top: 10px;">
+                                        <el-button type="success"
+                                                   size="mini"
+                                                   @click="applyRepeatingSectionChange(index)"
+                                                   :loading="isProcessing">
+                                            <i class="fa fa-check"></i> 应用数据
                                         </el-button>
                                     </div>
                                 </div>
@@ -420,6 +483,8 @@
 
                     // 内容控件数据
                     contentControls: [],
+                    // 新增：重复分区控件数据
+                    repeatingSections: [],
 
                     // 预览相关
                     previewHtml: '',
@@ -571,8 +636,9 @@
                             }
                         }
 
-                        // 提取内容控件
+                        // 提取内容控件和重复分区
                         this.extractContentControls();
+                        this.extractRepeatingSections();
 
                         // 生成初始预览
                         this.generatePreview();
@@ -603,8 +669,8 @@
                         return ns[prefix] || null;
                     };
 
-                    // 查找所有内容控件
-                    const xpath = "//w:sdt";
+                    // 查找所有内容控件（排除重复分区内的控件）
+                    const xpath = "//w:sdt[not(ancestor::w:repeatingSection)]";
                     const result = xmlDoc.evaluate(xpath, xmlDoc, nsResolver, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
 
                     const controls = [];
@@ -689,7 +755,94 @@
                     this.contentControls = controls;
                 },
 
-                // 生成预览HTML
+                // 新增：提取重复分区控件
+                extractRepeatingSections() {
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(this.documentXmlContent, 'text/xml');
+
+                    // 命名空间解析器
+                    const nsResolver = (prefix) => {
+                        const ns = {
+                            'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+                        };
+                        return ns[prefix] || null;
+                    };
+
+                    // 查找所有重复分区控件
+                    const xpath = "//w:repeatingSection";
+                    const result = xmlDoc.evaluate(xpath, xmlDoc, nsResolver, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+
+                    const sections = [];
+                    let node;
+                    let sectionCount = 0;
+
+                    while (node = result.iterateNext()) {
+                        sectionCount++;
+                        // 获取父级sdt元素，因为ID通常在sdtPr中
+                        const sdtNode = node.closest('w\\:sdt, sdt');
+                        if (!sdtNode) continue;
+
+                        const sdtPr = sdtNode.querySelector('w\\:sdtPr, sdtPr');
+                        if (!sdtPr) continue;
+
+                        // 提取ID
+                        const idNode = sdtPr.querySelector('w\\:id, id');
+                        const id = idNode ? idNode.getAttribute('w:val') : `repeating-section-${sectionCount}`;
+
+                        // 提取别名和标签
+                        const aliasNode = sdtPr.querySelector('w\\:alias, alias');
+                        const alias = aliasNode ? aliasNode.getAttribute('w:val') : '';
+                        const tagNode = sdtPr.querySelector('w\\:tag, tag');
+                        const tag = tagNode ? tagNode.getAttribute('w:val') : '';
+
+                        // 查找重复项模板
+                        const itemTemplate = node.querySelector('w\\:repeatingSectionItem, repeatingSectionItem');
+                        if (!itemTemplate) {
+                            this.addDebugInfo(`重复分区 ${id} 未找到模板项，跳过`);
+                            continue;
+                        }
+
+                        // 计算表格列数
+                        let columnsCount = 0;
+                        const table = itemTemplate.querySelector('w\\:tbl, tbl');
+                        if (table) {
+                            const firstRow = table.querySelector('w\\:tr, tr');
+                            if (firstRow) {
+                                columnsCount = firstRow.querySelectorAll('w\\:tc, tc').length;
+                            }
+                        }
+
+                        this.addDebugInfo(`重复分区 ${sectionCount}: ID=${id}, 列数=${columnsCount}`);
+
+                        // 创建示例JSON数据
+                        const exampleData = [];
+                        for (let i = 1; i <= 2; i++) {
+                            const rowData = {};
+                            for (let j = 1; j <= columnsCount; j++) {
+                                rowData[`C${j}`] = `数据${i}-${j}`;
+                            }
+                            exampleData.push(rowData);
+                        }
+
+                        // 初始化重复分区数据
+                        const sectionData = {
+                            id,
+                            alias,
+                            tag,
+                            columnsCount,
+                            xmlNode: node, // 保存原始XML节点引用
+                            itemTemplate: itemTemplate, // 保存模板项
+                            jsonData: JSON.stringify(exampleData, null, 2)
+                        };
+
+                        sections.push(sectionData);
+                    }
+
+                    this.addDebugInfo(`共找到 ${sections.length} 个重复分区控件`);
+                    this.repeatingSections = sections;
+                },
+
+                // 生成预览HTML（修正重复分区显示，不显示C1/C2等键名表头）
                 generatePreview() {
                     let html = '<div class="word-preview">';
 
@@ -719,21 +872,58 @@
                             const id = idNode ? idNode.getAttribute('w:val') : '未知ID';
                             const isImage = sdtPr.querySelector('w\\:picture, picture') !== null;
 
-                            if (isImage) {
+                            // 检查是否是重复分区控件
+                            const isRepeatingSection = control.querySelector('w\\:repeatingSection, repeatingSection') !== null;
+
+                            if (isRepeatingSection) {
+                                // 重复分区预览 - 不显示C1/C2等键名表头
+                                const sectionData = this.repeatingSections.find(s => s.id === id);
+                                let sectionPreview = `<div class="content-control-repeating" data-id="${id}">`;
+                                sectionPreview += `<div style="font-size: 13px; color: #722ed1; margin-bottom: 10px;">重复分区: ${sectionData ? sectionData.alias || id : id} (${sectionData ? sectionData.columnsCount : 0}列)</div>`;
+
+                                // 尝试解析JSON数据并显示表格预览
+                                if (sectionData) {
+                                    try {
+                                        const data = JSON.parse(sectionData.jsonData);
+                                        if (Array.isArray(data) && data.length > 0) {
+                                            sectionPreview += '<table border="1" cellpadding="5" style="border-collapse: collapse; width: 100%;">';
+
+                                            // 只显示数据行，不显示表头
+                                            data.forEach((row, index) => {
+                                                sectionPreview += `<tr ${index % 2 === 0 ? 'style="background-color: #f9f9f9;"' : ''}>`;
+                                                Object.values(row).forEach(value => {
+                                                    sectionPreview += `<td>${value}</td>`;
+                                                });
+                                                sectionPreview += '</tr>';
+                                            });
+
+                                            sectionPreview += '</table>';
+                                        } else {
+                                            sectionPreview += '<div style="color: #999;">无数据或数据格式不正确</div>';
+                                        }
+                                    } catch (e) {
+                                        sectionPreview += '<div style="color: #f56c6c;">JSON格式错误</div>';
+                                    }
+                                }
+
+                                sectionPreview += '</div>';
+                                paraText += sectionPreview;
+                            } else if (isImage) {
+                                // 图片控件预览
                                 const controlData = this.contentControls.find(c => c.id === id);
 
                                 if (controlData && controlData.imageUrl) {
                                     paraText += `<div class="content-control-image" data-id="${id}">
-                                    <img src="${controlData.imageUrl}" style="max-width: 300px; max-height: 200px;"
-                                         alt="${controlData.alias || '图片内容控件'}">
-                                    <div style="font-size: 12px; color: #666; margin-top: 5px;">
-                                      ${controlData.imageFileName || '图片'}
-                                    </div>
-                                  </div>`;
+                                        <img src="${controlData.imageUrl}" style="max-width: 300px; max-height: 200px;"
+                                             alt="${controlData.alias || '图片内容控件'}">
+                                        <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                                          ${controlData.imageFileName || '图片'}
+                                        </div>
+                                      </div>`;
                                 } else {
                                     paraText += `<div class="content-control-image" data-id="${id}" style="min-width: 200px; min-height: 100px; text-align: center; line-height: 100px; color: #999;">
-                                    [图片内容控件: ${id}]
-                                  </div>`;
+                                        [图片内容控件: ${id}]
+                                      </div>`;
                                 }
                             } else {
                                 // 文本控件处理
@@ -821,14 +1011,55 @@
                     }
                 },
 
+                // 新增：应用重复分区的更改
+                applyRepeatingSectionChange(index) {
+                    if (!this.originalZip) return;
+
+                    const section = this.repeatingSections[index];
+                    if (!section) return;
+
+                    try {
+                        this.isProcessing = true;
+
+                        // 验证JSON数据
+                        let data;
+                        try {
+                            data = JSON.parse(section.jsonData);
+                            if (!Array.isArray(data)) {
+                                throw new Error('数据必须是数组');
+                            }
+                            if (data.length === 0) {
+                                throw new Error('数组不能为空');
+                            }
+                        } catch (e) {
+                            this.showNotification(`JSON格式错误: ${e.message}`, 'error');
+                            return;
+                        }
+
+                        // 处理重复分区数据
+                        this.updateRepeatingSectionInXml(section, data);
+                        this.showNotification(`已更新重复分区 ID: ${section.id}`, 'success');
+
+                        // 重新生成预览
+                        this.generatePreview();
+                    } catch (error) {
+                        console.error('更新重复分区出错:', error);
+                        this.addDebugInfo(`更新失败: ${error.message}`);
+                        this.showNotification('更新失败，请重试', 'error');
+                    } finally {
+                        this.isProcessing = false;
+                    }
+                },
+
                 // 应用所有更改
                 applyAllChanges() {
-                    if (!this.originalZip || this.contentControls.length === 0) return;
+                    if (!this.originalZip || (this.contentControls.length === 0 && this.repeatingSections.length === 0)) return;
 
                     try {
                         this.isProcessing = true;
                         let changesApplied = false;
 
+                        // 处理普通内容控件
                         this.contentControls.forEach(control => {
                             if (control.isImage) {
                                 if (control.imageChanged && control.imageData && control.imageFileName) {
@@ -838,6 +1069,19 @@
                             } else {
                                 this.updateTextControlInXml(control.id, control.content);
                                 changesApplied = true;
+                            }
+                        });
+
+                        // 处理重复分区控件
+                        this.repeatingSections.forEach(section => {
+                            try {
+                                const data = JSON.parse(section.jsonData);
+                                if (Array.isArray(data) && data.length > 0) {
+                                    this.updateRepeatingSectionInXml(section, data);
+                                    changesApplied = true;
+                                }
+                            } catch (e) {
+                                this.addDebugInfo(`重复分区 ${section.id} JSON解析失败: ${e.message}`);
                             }
                         });
 
@@ -895,6 +1139,94 @@
                         const serializer = new XMLSerializer();
                         this.documentXmlContent = serializer.serializeToString(xmlDoc);
                     }
+                },
+
+                // 新增：更新重复分区控件
+                updateRepeatingSectionInXml(section, data) {
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(this.documentXmlContent, 'text/xml');
+
+                    // 命名空间解析器
+                    const nsResolver = (prefix) => {
+                        const ns = { 'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main' };
+                        return ns[prefix] || null;
+                    };
+
+                    // 查找重复分区节点
+                    const xpath = `//w:sdt[.//w:id[@w:val="${section.id}"]]//w:repeatingSection`;
+                    const result = xmlDoc.evaluate(xpath, xmlDoc, nsResolver, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                    const sectionNode = result.singleNodeValue;
+
+                    if (!sectionNode) {
+                        throw new Error(`未找到重复分区控件 ID: ${section.id}`);
+                    }
+
+                    // 清除现有项（保留第一个作为模板）
+                    const items = sectionNode.querySelectorAll('w\\:repeatingSectionItem, repeatingSectionItem');
+                    const templateItem = items.length > 0 ? items[0].cloneNode(true) : null;
+
+                    if (!templateItem) {
+                        throw new Error(`重复分区 ${section.id} 没有找到模板项`);
+                    }
+
+                    // 清空现有内容
+                    while (sectionNode.firstChild) {
+                        sectionNode.removeChild(sectionNode.firstChild);
+                    }
+
+                    // 为每个数据项创建新的重复项
+                    data.forEach((itemData, index) => {
+                        // 克隆模板项
+                        const newItem = templateItem.cloneNode(true);
+
+                        // 查找表格行
+                        const table = newItem.querySelector('w\\:tbl, tbl');
+                        if (table) {
+                            const rows = table.querySelectorAll('w\\:tr, tr');
+                            if (rows.length > 0) {
+                                // 假设第一行为数据行
+                                const row = rows[0];
+                                const cells = row.querySelectorAll('w\\:tc, tc');
+
+                                // 为每个单元格填充数据
+                                cells.forEach((cell, cellIndex) => {
+                                    // 数据键名：C1, C2, C3, C4...
+                                    const key = `C${cellIndex + 1}`;
+                                    if (itemData.hasOwnProperty(key)) {
+                                        // 清除现有文本
+                                        const textNodes = cell.querySelectorAll('w\\:t, t');
+                                        textNodes.forEach(node => node.parentNode.removeChild(node));
+
+                                        // 添加新文本
+                                        if (itemData[key] && itemData[key].trim()) {
+                                            let pNode = cell.querySelector('w\\:p, p') ||
+                                                xmlDoc.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:p');
+                                            let rNode = pNode.querySelector('w\\:r, r') ||
+                                                xmlDoc.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:r');
+                                            const textNode = xmlDoc.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:t');
+
+                                            textNode.textContent = itemData[key];
+                                            rNode.appendChild(textNode);
+                                            pNode.appendChild(rNode);
+
+                                            // 如果单元格为空，添加段落
+                                            if (cell.children.length === 0) {
+                                                cell.appendChild(pNode);
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        }
+
+                        // 添加新项到分区
+                        sectionNode.appendChild(newItem);
+                    });
+
+                    // 更新XML内容
+                    const serializer = new XMLSerializer();
+                    this.documentXmlContent = serializer.serializeToString(xmlDoc);
+                    this.addDebugInfo(`已更新重复分区 ${section.id}，生成 ${data.length} 行数据`);
                 },
 
                 // 核心修改：仅替换原始图片文件的内容，不创建新文件或修改关系
