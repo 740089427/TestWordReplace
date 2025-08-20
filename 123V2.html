@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word内容控件编辑器（含重复节处理）</title>
+    <!-- 引入外部资源 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <script src="https://unpkg.com/vue@2/dist/vue.js"></script>
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+    <script src="jszip.min.js"></script>
+    <!--<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>-->
+    <link rel="stylesheet" href="font-awesome.min.css">
+
+    <style>
+        /* 保持原有样式不变 */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f5f7fa;
+        }
+
+        .app-container {
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .upload-area {
+            background: white;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+        }
+
+        .main-content {
+            display: flex;
+            gap: 20px;
+        }
+
+        .control-panel {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+            max-height: calc(100vh - 160px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .preview-panel {
+            flex: 2;
+            background: white;
+            padding: 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+            max-height: calc(100vh - 160px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .controls-list {
+            overflow-y: auto;
+            flex: 1;
+            margin-top: 15px;
+        }
+
+        .control-item {
+            padding: 15px;
+            border: 1px solid #eaeaea;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+
+            .control-item:hover {
+                border-color: #409EFF;
+                box-shadow: 0 0 10px rgba(64, 158, 255, 0.2);
+            }
+
+        .preview-content {
+            flex: 1;
+            overflow-y: auto;
+            margin-top: 15px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+
+        .content-control {
+            background-color: #e6f7ff;
+            padding: 0 5px;
+            border-bottom: 2px solid #1890ff;
+            border-radius: 2px;
+        }
+
+        .content-control-image {
+            border: 2px dashed #1890ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            display: inline-block;
+        }
+
+        .repeating-section {
+            border: 2px dashed #ff4d4f;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+
+        .image-preview {
+            max-width: 100%;
+            max-height: 200px;
+            margin-top: 10px;
+            border-radius: 4px;
+        }
+
+        .footer-actions {
+            margin-top: 15px;
+            text-align: right;
+        }
+
+        .control-type-badge {
+            margin-left: 10px;
+            font-size: 12px;
+            padding: 2px 6px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+
+            ::-webkit-scrollbar-thumb:hover {
+                background: #a8a8a8;
+            }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <el-container>
+            <el-header style="background-color: #1890ff; color: white; padding: 0 20px;">
+                <div style="display: flex; align-items: center; height: 100%;">
+                    <i class="fa fa-file-word-o" style="font-size: 20px; margin-right: 10px;"></i>
+                    <h1 style="margin: 0; font-size: 18px;">Word内容控件编辑器（含重复节处理）</h1>
+                </div>
+            </el-header>
+
+            <el-main>
+                <div class="app-container">
+                    <!-- 上传区域 -->
+                    <div class="upload-area">
+                        <el-upload class="upload-demo"
+                                   action=""
+                                   :auto-upload="false"
+                                   :on-change="handleFileChange"
+                                   :show-file-list="false"
+                                   :before-upload="beforeUpload">
+                            <el-button size="medium" type="primary">
+                                <i class="fa fa-upload"></i> 选择Word文档
+                            </el-button>
+                            <div style="margin-top: 10px;">
+                                <el-tag v-if="fileName" type="info">{{ fileName }}</el-tag>
+                                <span class="el-upload__tip" style="margin-left: 10px;">支持.docx格式的Word文档</span>
+                            </div>
+                        </el-upload>
+
+                        <div style="margin-top: 15px; border: 2px dashed #ddd; border-radius: 4px; padding: 30px; text-align: center; cursor: pointer;"
+                             @click="triggerUpload"
+                             @dragover.prevent
+                             @dragenter.prevent
+                             @drop.prevent="handleDrop">
+                            <i class="fa fa-cloud-upload" style="font-size: 48px; color: #999; margin-bottom: 10px;"></i>
+                            <p style="color: #666;">拖放.docx文件到此处上传</p>
+                        </div>
+                    </div>
+
+                    <!-- 主内容区 -->
+                    <div class="main-content" v-if="isDocumentLoaded">
+                        <!-- 左侧控制面板 -->
+                        <div class="control-panel">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <el-card-header style="padding: 0;">
+                                    <el-button type="success"
+                                               size="mini"
+                                               @click="applyAllChanges"
+                                               :loading="isProcessing">
+                                        <i class="fa fa-check"></i> 应用所有更改
+                                    </el-button>
+                                </el-card-header>
+                                <el-badge :value="contentControls.length" type="primary">
+                                    内容控件
+                                </el-badge>
+                            </div>
+
+                            <div class="controls-list">
+                                <!-- 控件列表内容保持不变 -->
+                                <div v-if="contentControls.length === 0" style="text-align: center; padding: 20px; color: #999;">
+                                    <i class="fa fa-search" style="font-size: 32px; margin-bottom: 10px;"></i>
+                                    <p>未找到内容控件</p>
+                                </div>
+
+                                <!-- 文本内容控件 -->
+                                <div v-for="(control, index) in contentControls"
+                                     :key="control.id"
+                                     class="control-item"
+                                     v-if="control.type === 'text'">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <span>内容控件</span>
+                                        <el-badge type="primary" class="control-type-badge">文本</el-badge>
+                                    </div>
+
+                                    <el-descriptions column="1" border>
+                                        <el-descriptions-item label="控件ID">
+                                            <el-tag type="primary">{{ control.id }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="别名(Alias)">
+                                            <el-tag type="info">{{ control.alias }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="标签(Tag)">
+                                            <el-tag type="warning">{{ control.tag }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="内容">
+                                            <el-input type="textarea"
+                                                      :rows="3"
+                                                      v-model="control.content"
+                                                      placeholder="请输入内容..."></el-input>
+                                        </el-descriptions-item>
+                                    </el-descriptions>
+                                    <div style="text-align: right; margin-top: 10px;">
+                                        <el-button type="success"
+                                                   size="mini"
+                                                   @click="applyChange(index)"
+                                                   :loading="isProcessing">
+                                            <i class="fa fa-check"></i> 应用
+                                        </el-button>
+                                    </div>
+                                </div>
+
+                                <!-- 图片内容控件 -->
+                                <div v-for="(control, index) in contentControls"
+                                     :key="control.id"
+                                     class="control-item"
+                                     v-if="control.type === 'image'">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <span>内容控件</span>
+                                        <el-badge type="success" class="control-type-badge">图片</el-badge>
+                                    </div>
+
+                                    <el-descriptions column="1" border>
+                                        <el-descriptions-item label="控件ID">
+                                            <el-tag type="primary">{{ control.id }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="别名(Alias)">
+                                            <el-tag type="info">{{ control.alias }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-tag type="info" style="margin-left: 10px;">
+                                            {{ control.imageFileName || '未知图片' }}
+                                        </el-tag>
+                                        <el-descriptions-item label="当前图片">
+                                            <div v-if="control.imageUrl" class="image-preview-container">
+                                                <img :src="control.imageUrl" class="image-preview" :alt="control.alias || '图片预览'">
+                                            </div>
+                                            <div v-else class="text-gray-500 text-sm">
+                                                <i class="fa fa-exclamation-triangle text-orange-500"></i> 无法预览图片
+                                            </div>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="更换图片">
+                                            <el-upload class="avatar-uploader"
+                                                       action=""
+                                                       :auto-upload="false"
+                                                       :on-change="(file) => handleImageUpload(file, index)"
+                                                       :show-file-list="false"
+                                                       accept="image/*">
+                                                <el-button size="small" type="primary">
+                                                    <i class="fa fa-picture-o"></i> 选择图片
+                                                </el-button>
+                                            </el-upload>
+                                        </el-descriptions-item>
+                                    </el-descriptions>
+                                    <div style="text-align: right; margin-top: 10px;">
+                                        <el-button type="success"
+                                                   size="mini"
+                                                   @click="applyChange(index)"
+                                                   :loading="isProcessing"
+                                                   :disabled="!control.imageChanged">
+                                            <i class="fa fa-check"></i> 替换图片
+                                        </el-button>
+                                    </div>
+                                </div>
+
+                                <!-- 重复节内容控件 -->
+                                <div v-for="(control, index) in contentControls"
+                                     :key="control.id"
+                                     class="control-item"
+                                     v-if="control.type === 'repeatingSection'">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <span>内容控件</span>
+                                        <el-badge type="danger" class="control-type-badge">重复节</el-badge>
+                                    </div>
+
+                                    <el-descriptions column="1" border>
+                                        <el-descriptions-item label="控件ID">
+                                            <el-tag type="primary">{{ control.id }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="别名(Alias)">
+                                            <el-tag type="info">{{ control.alias }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="标签(Tag)">
+                                            <el-tag type="warning">{{ control.tag }}</el-tag>
+                                        </el-descriptions-item>
+                                        <el-descriptions-item label="数据">
+                                            <el-input type="textarea"
+                                                      :rows="6"
+                                                      v-model="control.jsonData"
+                                                      placeholder="请输入JSON数组..."></el-input>
+                                            <div style="margin-top: 10px; font-size: 12px; color: #666;">
+                                                格式示例: [{"C1":"值1","C2":"值2"},{"C1":"值3","C2":"值4"}]
+                                            </div>
+                                        </el-descriptions-item>
+                                    </el-descriptions>
+                                    <div style="text-align: right; margin-top: 10px;">
+                                        <el-button type="success"
+                                                   size="mini"
+                                                   @click="applyChange(index)"
+                                                   :loading="isProcessing">
+                                            <i class="fa fa-check"></i> 应用
+                                        </el-button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 右侧预览面板 -->
+                        <div class="preview-panel">
+                            <el-card-header style="padding: 0;">
+                                <div style="font-weight: bold;">
+                                    <i class="fa fa-eye" style="margin-right: 5px;"></i>文档预览
+                                </div>
+                            </el-card-header>
+
+                            <div class="preview-content">
+                                <div v-if="!previewHtml" style="text-align: center; padding: 50px 0; color: #999;">
+                                    <i class="fa fa-file-text-o" style="font-size: 64px; margin-bottom: 20px;"></i>
+                                    <p>修改内容后将在这里显示预览效果</p>
+                                </div>
+                                <div v-else v-html="previewHtml"></div>
+                            </div>
+
+                            <div class="footer-actions">
+                                <el-button type="primary"
+                                           @click="downloadModifiedDocument"
+                                           :loading="isProcessing">
+                                    <i class="fa fa-download"></i> 下载修改后的文档
+                                </el-button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 初始状态提示 -->
+                    <div v-else style="text-align: center; padding: 50px; background: white; border-radius: 4px; box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);">
+                        <i class="fa fa-file-word-o" style="font-size: 80px; color: #ddd; margin-bottom: 20px;"></i>
+                        <p style="color: #666; font-size: 16px;">请上传一个Word文档开始编辑</p>
+                    </div>
+                </div>
+            </el-main>
+
+            <el-footer style="text-align: center; color: #666; font-size: 12px;">
+                所有操作均在本地完成，您的文档不会上传到服务器 | 基于Element UI构建
+            </el-footer>
+        </el-container>
+
+        <!-- 加载中提示 -->
+        <el-loading v-if="isProcessing"
+                    text="处理中，请稍候..."
+                    fullscreen
+                    :background="'rgba(255, 255, 255, 0.8)'"></el-loading>
+
+        <!-- 消息提示 -->
+        <el-notification :title="notification.title"
+                         :message="notification.message"
+                         :type="notification.type"
+                         :duration="3000"
+                         v-if="notification.show"></el-notification>
+    </div>
+
+    <script>
+        new Vue({
+            el: '#app',
+            data() {
+                return {
+                    // 文件相关
+                    fileName: '',
+                    originalZip: null,
+                    documentXmlContent: '',
+                    documentRelsContent: '',
+                    relationships: {},
+                    mediaFiles: {}, // 存储媒体文件 {filename: {base64: "...", size: ..., path: "..."}
+                    isDocumentLoaded: false,
+                    isProcessing: false,
+
+                    // 内容控件数据
+                    contentControls: [],
+
+                    // 预览相关
+                    previewHtml: '',
+
+                    // 通知提示
+                    notification: {
+                        show: false,
+                        title: '',
+                        message: '',
+                        type: ''
+                    }
+                };
+            },
+            methods: {
+                // 处理文件选择
+                handleFileChange(file) {
+                    this.processFile(file.raw);
+                },
+
+                // 处理拖放文件
+                handleDrop(e) {
+                    const file = e.dataTransfer.files[0];
+                    if (file) {
+                        this.processFile(file);
+                    }
+                },
+
+                // 触发上传
+                triggerUpload() {
+                    document.querySelector('.el-upload__input').click();
+                },
+
+                // 上传前校验
+                beforeUpload(file) {
+                    const isDocx = file.name.endsWith('.docx');
+                    if (!isDocx) {
+                        this.showNotification('请上传.docx格式的Word文档', 'warning');
+                    }
+                    return isDocx;
+                },
+
+                // 解析关系文件
+                parseRelationships(relsXml) {
+                    try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(relsXml, "application/xml");
+                        const relationships = doc.getElementsByTagName("Relationship");
+                        const idToPath = {};
+
+                        for (let i = 0; i < relationships.length; i++) {
+                            const rel = relationships[i];
+                            const id = rel.getAttribute("Id");
+                            const type = rel.getAttribute("Type");
+                            const target = rel.getAttribute("Target");
+
+                            if (type && type.includes("image")) {
+                                idToPath[id] = target;
+                            }
+                        }
+
+                        return idToPath;
+                    } catch (error) {
+                        return {};
+                    }
+                },
+
+                // 处理文件并提取内容控件
+                async processFile(file) {
+                    if (!file.name.endsWith('.docx')) {
+                        this.showNotification('请上传.docx格式的Word文档', 'warning');
+                        return;
+                    }
+
+                    try {
+                        this.isProcessing = true;
+                        this.fileName = file.name;
+
+                        // 读取文件并解压
+                        const arrayBuffer = await this.readFileAsArrayBuffer(file);
+                        const zip = await JSZip.loadAsync(arrayBuffer);
+                        this.originalZip = zip;
+
+                        // 读取document.xml内容
+                        const docXmlFile = zip.file('word/document.xml');
+                        if (!docXmlFile) {
+                            throw new Error('文档结构不正确，未找到word/document.xml');
+                        }
+                        this.documentXmlContent = await docXmlFile.async('text');
+
+                        // 读取并解析document.xml.rels内容
+                        const relsFile = zip.file('word/_rels/document.xml.rels');
+                        if (relsFile) {
+                            this.documentRelsContent = await relsFile.async('text');
+                            this.relationships = this.parseRelationships(this.documentRelsContent);
+                        } else {
+                            this.relationships = {};
+                        }
+
+                        // 收集媒体文件并转换为Base64
+                        this.mediaFiles = {};
+                        const mediaFiles = zip.file(/word\/media\//i);
+
+                        for (const mediaFile of mediaFiles) {
+                            const fullPath = mediaFile.name;
+                            const fileName = fullPath.replace(/^word\/media\//i, '');
+
+                            try {
+                                const base64Data = await mediaFile.async('base64');
+                                const fileSize = await mediaFile.async('uint8array').then(arr => arr.length);
+
+                                this.mediaFiles[fileName] = {
+                                    base64: base64Data,
+                                    size: fileSize,
+                                    path: fullPath,
+                                    base64Url: `data:image/*;base64,${base64Data}`
+                                };
+                            } catch (e) {
+                                // 忽略媒体文件读取错误
+                            }
+                        }
+
+                        // 提取内容控件
+                        this.extractContentControls();
+
+                        // 生成初始预览
+                        this.generatePreview();
+
+                        this.isDocumentLoaded = true;
+                        this.showNotification('文档加载成功', 'success');
+                    } catch (error) {
+                        console.error('处理文件出错:', error);
+                        this.showNotification(`处理失败: ${error.message}`, 'error');
+                    } finally {
+                        this.isProcessing = false;
+                    }
+                },
+
+                // 提取内容控件
+                extractContentControls() {
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(this.documentXmlContent, 'text/xml');
+
+                    // 命名空间解析器
+                    const nsResolver = (prefix) => {
+                        const ns = {
+                            'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+                            'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+                            'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
+                            'w15': 'http://schemas.microsoft.com/office/word/2012/wordml'
+                        };
+                        return ns[prefix] || null;
+                    };
+
+                    // 查找所有内容控件
+                    const xpath = "//w:sdt";
+                    const result = xmlDoc.evaluate(xpath, xmlDoc, nsResolver, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+
+                    const controls = [];
+                    let node;
+                    let controlCount = 0;
+
+                    while (node = result.iterateNext()) {
+                        controlCount++;
+                        const sdtPr = node.querySelector('w\\:sdtPr, sdtPr');
+                        if (!sdtPr) continue;
+
+                        // 提取ID
+                        const idNode = sdtPr.querySelector('w\\:id, id');
+                        const id = idNode ? idNode.getAttribute('w:val') : `auto-id-${controlCount}`;
+
+                        // 判断是否为重复节
+                        const isRepeatingSection = sdtPr.querySelector('w15\\:repeatingSection, repeatingSection') !== null;
+
+                        // 判断是否为重复项（不单独作为控件）
+                        const isRepeatingItem = sdtPr.querySelector('w15\\:repeatingSectionItem, repeatingSectionItem') !== null;
+                        if (isRepeatingItem) continue;
+
+                        // 判断是否为图片内容控件
+                        const isImage = !isRepeatingSection && sdtPr.querySelector('w\\:picture, picture') !== null;
+
+                        // 如果是重复节，进行特殊处理
+                        if (isRepeatingSection) {
+                            // 提取别名和标签
+                            const aliasNode = sdtPr.querySelector('w\\:alias, alias');
+                            const alias = aliasNode ? aliasNode.getAttribute('w:val') : '';
+                            const tagNode = sdtPr.querySelector('w\\:tag, tag');
+                            const tag = tagNode ? tagNode.getAttribute('w:val') : '';
+
+                            // 解析重复节内容
+                            const items = this.parseRepeatingSection(node, nsResolver);
+
+                            controls.push({
+                                id,
+                                alias,
+                                tag,
+                                type: 'repeatingSection',
+                                items: items,
+                                template: this.extractRepeatingSectionTemplate(node, nsResolver),
+                                jsonData: JSON.stringify(items, null, 2)
+                            });
+                            continue;
+                        }
+
+                        // 提取别名和标签
+                        const aliasNode = sdtPr.querySelector('w\\:alias, alias');
+                        const alias = aliasNode ? aliasNode.getAttribute('w:val') : '';
+                        const tagNode = sdtPr.querySelector('w\\:tag, tag');
+                        const tag = tagNode ? tagNode.getAttribute('w:val') : '';
+
+                        // 初始化控件数据
+                        const controlData = {
+                            id,
+                            alias,
+                            tag,
+                            type: isImage ? 'image' : 'text'
+                        };
+
+                        // 处理图片控件
+                        if (isImage) {
+                            Object.assign(controlData, {
+                                imageUrl: null,
+                                imageData: null,
+                                imageRelId: null,
+                                imageFileName: null,
+                                imageChanged: false
+                            });
+
+                            const sdtContent = node.querySelector('w\\:sdtContent, sdtContent');
+                            if (sdtContent) {
+                                // 查找图片引用节点
+                                let blipNode = sdtContent.querySelector('a\\:blip, blip');
+                                if (blipNode) {
+                                    // 获取关系ID
+                                    controlData.imageRelId = blipNode.getAttribute('r:embed') ||
+                                        blipNode.getAttribute('embed');
+
+                                    // 查找图片文件名
+                                    if (controlData.imageRelId && this.relationships[controlData.imageRelId]) {
+                                        const targetPath = this.relationships[controlData.imageRelId];
+                                        controlData.imageFileName = targetPath.split('/').pop().split('\\').pop();
+
+                                        // 加载图片
+                                        if (controlData.imageFileName && this.mediaFiles[controlData.imageFileName]) {
+                                            controlData.imageUrl = this.mediaFiles[controlData.imageFileName].base64Url;
+                                            controlData.imageData = this.mediaFiles[controlData.imageFileName].base64;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // 处理文本控件
+                        else {
+                            controlData.content = '';
+                            const sdtContent = node.querySelector('w\\:sdtContent, sdtContent');
+                            if (sdtContent) {
+                                const textNodes = sdtContent.querySelectorAll('w\\:t, t');
+                                if (textNodes.length > 0) {
+                                    controlData.content = Array.from(textNodes).map(n => n.textContent).join('');
+                                }
+                            }
+                        }
+
+                        controls.push(controlData);
+                    }
+
+                    this.contentControls = controls;
+                },
+
+                // 解析重复节内容为JSON
+                parseRepeatingSection(sectionNode, nsResolver) {
+                    const items = [];
+                    // 先获取所有sdt元素，再过滤包含repeatingSectionItem的元素
+                    const allSdtNodes = sectionNode.querySelectorAll('w\\:sdt, sdt');
+                    const itemNodes = Array.from(allSdtNodes).filter(node => {
+                        return node.querySelector('w15\\:repeatingSectionItem, repeatingSectionItem') !== null;
+                    });
+
+                    itemNodes.forEach(itemNode => {
+                        const itemData = {};
+                        // 查找当前项中的所有文本控件
+                        const allTextSdtNodes = itemNode.querySelectorAll('w\\:sdt, sdt');
+                        const textControls = Array.from(allTextSdtNodes).filter(node => {
+                            return node.querySelector('w\\:text, text') !== null;
+                        });
+
+                        textControls.forEach(ctrl => {
+                            const idNode = ctrl.querySelector('w\\:sdtPr w\\:id, sdtPr id');
+                            const ctrlId = idNode ? idNode.getAttribute('w:val') : null;
+
+                            // 获取控件内容
+                            const sdtContent = ctrl.querySelector('w\\:sdtContent, sdtContent');
+                            if (sdtContent) {
+                                const textNodes = sdtContent.querySelectorAll('w\\:t, t');
+                                const content = Array.from(textNodes).map(n => n.textContent).join('');
+
+                                // 尝试从标签获取字段名，或使用ID
+                                const tagNode = ctrl.querySelector('w\\:sdtPr w\\:tag, sdtPr tag');
+                                const fieldName = tagNode ? tagNode.getAttribute('w:val') : ctrlId;
+
+                                if (fieldName) {
+                                    itemData[fieldName] = content;
+                                }
+                            }
+                        });
+
+                        items.push(itemData);
+                    });
+
+                    return items;
+                },
+
+                // 提取重复节模板用于生成新项
+                extractRepeatingSectionTemplate(sectionNode, nsResolver) {
+                    // 先获取所有sdt元素，再过滤包含repeatingSectionItem的元素
+                    const allSdtNodes = sectionNode.querySelectorAll('w\\:sdt, sdt');
+                    const itemNode = Array.from(allSdtNodes).find(node => {
+                        return node.querySelector('w15\\:repeatingSectionItem, repeatingSectionItem') !== null;
+                    });
+
+                    if (itemNode) {
+                        const serializer = new XMLSerializer();
+                        return serializer.serializeToString(itemNode);
+                    }
+                    return '';
+                },
+
+                // 生成预览HTML
+                generatePreview() {
+                    let html = '<div class="word-preview">';
+
+                    // 提取段落内容
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(this.documentXmlContent, 'text/xml');
+                    const paragraphs = xmlDoc.querySelectorAll('w\\:p, p');
+
+                    paragraphs.forEach(para => {
+                        let paraText = '';
+
+                        // 处理普通文本节点
+                        const textNodes = para.querySelectorAll('w\\:t:not(w\\:sdt w\\:t), t:not(sdt t)');
+                        textNodes.forEach(textNode => {
+                            paraText += textNode.textContent;
+                        });
+
+                        // 处理内容控件（非重复节）
+                        const contentControls = para.closest('w\\:sdt, sdt')
+                            ? [para.closest('w\\:sdt, sdt')]
+                            : Array.from(para.querySelectorAll('w\\:sdt, sdt')).filter(node => {
+                                // 过滤掉包含repeatingSection的节点
+                                return node.querySelector('w15\\:repeatingSection, repeatingSection') === null;
+                            });
+
+                        contentControls.forEach(control => {
+                            const sdtPr = control.querySelector('w\\:sdtPr, sdtPr');
+                            if (!sdtPr) return;
+
+                            // 跳过重复项
+                            if (sdtPr.querySelector('w15\\:repeatingSectionItem, repeatingSectionItem')) return;
+
+                            const idNode = sdtPr.querySelector('w\\:id, id');
+                            const id = idNode ? idNode.getAttribute('w:val') : '未知ID';
+                            const isImage = sdtPr.querySelector('w\\:picture, picture') !== null;
+
+                            if (isImage) {
+                                const controlData = this.contentControls.find(c => c.id === id && c.type === 'image');
+
+                                if (controlData && controlData.imageUrl) {
+                                    paraText += `<div class="content-control-image" data-id="${id}">
+                                        <img src="${controlData.imageUrl}" style="max-width: 300px; max-height: 200px;"
+                                             alt="${controlData.alias || '图片内容控件'}">
+                                        <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                                          ${controlData.imageFileName || '图片'}
+                                        </div>
+                                      </div>`;
+                                } else {
+                                    paraText += `<div class="content-control-image" data-id="${id}" style="min-width: 200px; min-height: 100px; text-align: center; line-height: 100px; color: #999;">
+                                        [图片内容控件: ${id}]
+                                      </div>`;
+                                }
+                            } else {
+                                // 文本控件处理
+                                let content = '[' + id + ']';
+                                const sdtContent = control.querySelector('w\\:sdtContent, sdtContent');
+                                if (sdtContent) {
+                                    const ctrlTextNodes = sdtContent.querySelectorAll('w\\:t, t');
+                                    if (ctrlTextNodes.length > 0) {
+                                        content = Array.from(ctrlTextNodes).map(n => n.textContent).join('');
+                                    }
+                                }
+
+                                paraText += `<span class="content-control" data-id="${id}">${content}</span>`;
+                            }
+                        });
+
+                        if (paraText.trim()) {
+                            html += `<p style="margin-bottom: 16px;">${paraText}</p>`;
+                        }
+                    });
+
+                    // 处理表格
+                    const tables = xmlDoc.querySelectorAll('w\\:tbl, tbl');
+                    tables.forEach(table => {
+                        // 检查表格是否包含重复节（修复选择器错误）
+                        const allSdtInTable = table.querySelectorAll('w\\:sdt, sdt');
+                        const hasRepeatingSection = Array.from(allSdtInTable).some(node => {
+                            return node.querySelector('w15\\:repeatingSection, repeatingSection') !== null;
+                        });
+
+                        if (!hasRepeatingSection) {
+                            // 普通表格处理
+                            html += '<table border="1" cellpadding="5" style="border-collapse: collapse; width: 100%; margin: 15px 0;">';
+
+                            // 处理表头和普通行
+                            const rows = table.querySelectorAll('w\\:tr, tr');
+                            rows.forEach(row => {
+                                html += '<tr>';
+                                const cells = row.querySelectorAll('w\\:tc, tc');
+                                cells.forEach(cell => {
+                                    let cellText = '';
+                                    const textNodes = cell.querySelectorAll('w\\:t, t');
+                                    textNodes.forEach(textNode => {
+                                        cellText += textNode.textContent;
+                                    });
+                                    html += `<td>${cellText}</td>`;
+                                });
+                                html += '</tr>';
+                            });
+
+                            html += '</table>';
+                        }
+                    });
+
+                    // 处理重复节（修复选择器错误）
+                    const allSdtNodes = xmlDoc.querySelectorAll('w\\:sdt, sdt');
+                    const repeatingSections = Array.from(allSdtNodes).filter(node => {
+                        return node.querySelector('w15\\:repeatingSection, repeatingSection') !== null;
+                    });
+
+                    repeatingSections.forEach(section => {
+                        const idNode = section.querySelector('w\\:sdtPr w\\:id, sdtPr id');
+                        const id = idNode ? idNode.getAttribute('w:val') : '未知ID';
+
+                        // 找到对应的控件数据
+                        const controlData = this.contentControls.find(c => c.id === id && c.type === 'repeatingSection');
+
+                        if (controlData) {
+                            html += `<div class="repeating-section" data-id="${id}">`;
+                            html += `<div class="section-header" style="font-weight: bold; margin: 10px 0;">重复节: ${controlData.alias || id}</div>`;
+
+                            // 生成表格
+                            html += `<table border="1" cellpadding="5" style="border-collapse: collapse; width: 100%; margin-bottom: 15px;">`;
+
+                            // 生成表头（根据第一个项的键）
+                            if (controlData.items.length > 0) {
+                                html += '<tr>';
+                                Object.keys(controlData.items[0]).forEach(key => {
+                                    html += `<th style="background-color: #f0f0f0;">${key}</th>`;
+                                });
+                                html += '</tr>';
+
+                                // 生成行
+                                controlData.items.forEach(item => {
+                                    html += '<tr>';
+                                    Object.values(item).forEach(value => {
+                                        html += `<td>${value}</td>`;
+                                    });
+                                    html += '</tr>';
+                                });
+                            } else {
+                                html += '<tr><td colspan="100%" style="text-align: center; color: #999;">无数据</td></tr>';
+                            }
+
+                            html += '</table></div>';
+                        }
+                    });
+
+                    html += '</div>';
+                    this.previewHtml = html;
+                },
+
+                // 处理图片上传
+                handleImageUpload(file, index) {
+                    const control = this.contentControls[index];
+                    if (!control || control.type !== 'image') return;
+
+                    // 读取图片文件并转换为Base64
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const base64Data = e.target.result.split(',')[1];
+                        this.$set(this.contentControls, index, {
+                            ...control,
+                            imageUrl: e.target.result,
+                            imageData: base64Data,
+                            imageChanged: true
+                        });
+
+                        this.showNotification('图片已加载，点击"替换图片"生效', 'info');
+                    };
+
+                    if (file.raw.type.startsWith('image/')) {
+                        reader.readAsDataURL(file.raw);
+                    } else {
+                        this.showNotification('请上传图片文件', 'warning');
+                    }
+                },
+
+                // 应用单个控件的更改
+                applyChange(index) {
+                    if (!this.originalZip) return;
+
+                    const control = this.contentControls[index];
+                    if (!control) return;
+
+                    try {
+                        this.isProcessing = true;
+
+                        if (control.type === 'image') {
+                            this.applyImageChange(index);
+                        } else if (control.type === 'text') {
+                            this.applyTextChange(index);
+                        } else if (control.type === 'repeatingSection') {
+                            this.applyRepeatingSectionChange(index);
+                        }
+
+                        // 重新生成预览
+                        this.generatePreview();
+                    } catch (error) {
+                        console.error('更新内容控件出错:', error);
+                        this.showNotification('更新失败，请重试', 'error');
+                    } finally {
+                        this.isProcessing = false;
+                    }
+                },
+
+                // 应用文本控件更改
+                applyTextChange(index) {
+                    const control = this.contentControls[index];
+                    this.updateTextControlInXml(control.id, control.content);
+                    this.showNotification(`已更新文本控件 ID: ${control.id}`, 'success');
+                },
+
+                // 应用图片控件更改
+                applyImageChange(index) {
+                    const control = this.contentControls[index];
+                    if (control.imageChanged && control.imageData && control.imageFileName) {
+                        // 仅替换原始图片文件内容，不修改文件名和关系
+                        this.updateImageControlInXml(control);
+                        this.showNotification(`已替换图片: ${control.imageFileName}`, 'success');
+                    } else if (!control.imageFileName) {
+                        this.showNotification('未找到原始图片文件名，无法替换', 'warning');
+                    } else {
+                        this.showNotification('未更改图片或图片数据无效', 'warning');
+                    }
+                },
+
+                // 应用重复节更改
+                applyRepeatingSectionChange(index) {
+                    const control = this.contentControls[index];
+                    try {
+                        // 解析JSON数据
+                        const newItems = JSON.parse(control.jsonData);
+                        if (!Array.isArray(newItems)) {
+                            throw new Error('重复节数据必须是数组');
+                        }
+
+                        // 验证数组项是否为对象
+                        newItems.forEach((item, i) => {
+                            if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+                                throw new Error(`数组第${i + 1}项必须是对象`);
+                            }
+                        });
+
+                        // 更新XML中的重复项
+                        this.updateRepeatingSectionInXml(control, newItems);
+
+                        // 更新控件数据
+                        this.$set(this.contentControls, index, {
+                            ...control,
+                            items: newItems
+                        });
+
+                        this.showNotification(`已更新重复节控件 ID: ${control.id}`, 'success');
+                    } catch (error) {
+                        console.error('更新重复节出错:', error);
+                        this.showNotification(`JSON格式错误: ${error.message}`, 'error');
+                        throw error;
+                    }
+                },
+
+                // 应用所有更改
+                applyAllChanges() {
+                    if (!this.originalZip || this.contentControls.length === 0) return;
+
+                    try {
+                        this.isProcessing = true;
+                        let changesApplied = false;
+
+                        this.contentControls.forEach((control, index) => {
+                            if (control.type === 'image') {
+                                if (control.imageChanged && control.imageData && control.imageFileName) {
+                                    this.updateImageControlInXml(control);
+                                    changesApplied = true;
+                                }
+                            } else if (control.type === 'text') {
+                                this.updateTextControlInXml(control.id, control.content);
+                                changesApplied = true;
+                            } else if (control.type === 'repeatingSection') {
+                                try {
+                                    const newItems = JSON.parse(control.jsonData);
+                                    if (Array.isArray(newItems)) {
+                                        this.updateRepeatingSectionInXml(control, newItems);
+                                        control.items = newItems;
+                                        changesApplied = true;
+                                    }
+                                } catch (e) {
+                                    console.error('跳过无效的重复节数据:', e);
+                                }
+                            }
+                        });
+
+                        if (changesApplied) {
+                            this.generatePreview();
+                            this.showNotification('所有更改已应用', 'success');
+                        } else {
+                            this.showNotification('没有需要应用的更改', 'info');
+                        }
+                    } catch (error) {
+                        console.error('应用所有更改出错:', error);
+                        this.showNotification('应用更改失败，请重试', 'error');
+                    } finally {
+                        this.isProcessing = false;
+                    }
+                },
+
+                // 更新文本控件
+                updateTextControlInXml(controlId, newContent) {
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(this.documentXmlContent, 'text/xml');
+
+                    const nsResolver = (prefix) => {
+                        const ns = { 'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main' };
+                        return ns[prefix] || null;
+                    };
+
+                    const xpath = `//w:sdt[.//w:id[@w:val="${controlId}"]]`;
+                    const result = xmlDoc.evaluate(xpath, xmlDoc, nsResolver, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                    const controlNode = result.singleNodeValue;
+
+                    if (controlNode) {
+                        const sdtContent = controlNode.querySelector('w\\:sdtContent, sdtContent');
+                        if (sdtContent) {
+                            // 清除现有文本节点
+                            const textNodes = sdtContent.querySelectorAll('w\\:t, t');
+                            textNodes.forEach(node => node.parentNode.removeChild(node));
+
+                            // 添加新内容
+                            if (newContent.trim()) {
+                                let pNode = sdtContent.querySelector('w\\:p, p') ||
+                                    xmlDoc.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:p');
+                                let rNode = pNode.querySelector('w\\:r, r') ||
+                                    xmlDoc.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:r');
+                                const textNode = xmlDoc.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:t');
+
+                                textNode.textContent = newContent;
+                                rNode.appendChild(textNode);
+                                pNode.appendChild(rNode);
+                                sdtContent.appendChild(pNode);
+                            }
+                        }
+
+                        // 更新XML内容
+                        const serializer = new XMLSerializer();
+                        this.documentXmlContent = serializer.serializeToString(xmlDoc);
+                    }
+                },
+
+                // 更新图片控件
+                updateImageControlInXml(control) {
+                    // 1. 确保我们有原始图片文件名
+                    if (!control.imageFileName) {
+                        throw new Error('没有原始图片文件名，无法进行原位替换');
+                    }
+
+                    // 2. 确定图片的MIME类型
+                    let mimeType = 'image/png'; // 默认类型
+                    if (control.imageUrl && control.imageUrl.startsWith('data:')) {
+                        mimeType = control.imageUrl.split(';')[0].slice(5);
+                    }
+
+                    // 3. 将Base64数据转换为Blob
+                    const imageBlob = this.base64ToBlob(control.imageData, mimeType);
+
+                    // 4. 直接替换原始图片文件内容，保持原文件名和路径
+                    const imagePath = `word/media/${control.imageFileName}`;
+                    this.originalZip.file(imagePath, imageBlob);
+
+                    // 5. 更新媒体文件缓存中的数据
+                    this.mediaFiles[control.imageFileName] = {
+                        ...this.mediaFiles[control.imageFileName],
+                        base64: control.imageData,
+                        base64Url: control.imageUrl,
+                        size: control.imageData.length * 0.75 // 近似计算
+                    };
+
+                    // 6. 更新控件状态
+                    control.imageChanged = false;
+                },
+
+                // 更新重复节内容
+                updateRepeatingSectionInXml(control, newItems) {
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(this.documentXmlContent, 'text/xml');
+                    const nsResolver = (prefix) => {
+                        const ns = {
+                            'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
+                            'w15': 'http://schemas.microsoft.com/office/word/2012/wordml'
+                        };
+                        return ns[prefix] || null;
+                    };
+
+                    // 查找重复节节点
+                    const xpath = `//w:sdt[.//w:id[@w:val="${control.id}"] and .//w15:repeatingSection]`;
+                    const result = xmlDoc.evaluate(xpath, xmlDoc, nsResolver, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                    const sectionNode = result.singleNodeValue;
+
+                    if (sectionNode) {
+                        // 清空现有重复项
+                        const allSdtNodes = sectionNode.querySelectorAll('w\\:sdt, sdt');
+                        const existingItems = Array.from(allSdtNodes).filter(node => {
+                            return node.querySelector('w15\\:repeatingSectionItem, repeatingSectionItem') !== null;
+                        });
+                        existingItems.forEach(item => item.parentNode.removeChild(item));
+
+                        // 解析模板
+                        const templateDoc = parser.parseFromString(control.template, 'text/xml');
+                        const templateItem = templateDoc.querySelector('w\\:sdt, sdt');
+
+                        if (templateItem) {
+                            // 为每个新项创建节点
+                            newItems.forEach((itemData, index) => {
+                                // 克隆模板
+                                const newItem = templateItem.cloneNode(true);
+
+                                // 更新当前项中的所有文本控件
+                                Object.keys(itemData).forEach(fieldName => {
+                                    const value = itemData[fieldName];
+                                    // 查找与字段名匹配的控件（通过tag或id）
+                                    const ctrlXpath = `.//w:sdt[.//w:tag[@w:val="${fieldName}"] or .//w:id[@w:val="${fieldName}"]]//w:sdtContent`;
+                                    const ctrlResult = xmlDoc.evaluate(ctrlXpath, newItem, nsResolver, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                                    const ctrlContent = ctrlResult.singleNodeValue;
+
+                                    if (ctrlContent) {
+                                        // 清除现有内容
+                                        const textNodes = ctrlContent.querySelectorAll('w\\:t, t');
+                                        textNodes.forEach(node => node.parentNode.removeChild(node));
+
+                                        // 添加新内容
+                                        if (value) {
+                                            let pNode = ctrlContent.querySelector('w\\:p, p') ||
+                                                xmlDoc.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:p');
+                                            let rNode = pNode.querySelector('w\\:r, r') ||
+                                                xmlDoc.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:r');
+                                            const textNode = xmlDoc.createElementNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'w:t');
+
+                                            textNode.textContent = value;
+                                            rNode.appendChild(textNode);
+                                            pNode.appendChild(rNode);
+                                            ctrlContent.appendChild(pNode);
+                                        }
+                                    }
+                                });
+
+                                // 更新项的ID，避免重复
+                                const itemIdNode = newItem.querySelector('w\\:sdtPr w\\:id, sdtPr id');
+                                if (itemIdNode) {
+                                    itemIdNode.setAttribute('w:val', `${itemIdNode.getAttribute('w:val')}_${index}`);
+                                }
+
+                                // 将新项添加到重复节
+                                const sdtContent = sectionNode.querySelector('w\\:sdtContent, sdtContent');
+                                if (sdtContent) {
+                                    // 导入节点到当前文档
+                                    const importedNode = xmlDoc.importNode(newItem, true);
+                                    sdtContent.appendChild(importedNode);
+                                }
+                            });
+                        }
+
+                        // 更新XML内容
+                        const serializer = new XMLSerializer();
+                        this.documentXmlContent = serializer.serializeToString(xmlDoc);
+                    }
+                },
+
+                // 下载修改后的文档
+                async downloadModifiedDocument() {
+                    if (!this.originalZip) return;
+
+                    try {
+                        this.isProcessing = true;
+
+                        // 更新ZIP中的document.xml
+                        this.originalZip.file('word/document.xml', this.documentXmlContent);
+
+                        // 生成修改后的ZIP文件
+                        const content = await this.originalZip.generateAsync({
+                            type: 'blob',
+                            compression: 'DEFLATE',
+                            compressionOptions: { level: 6 }
+                        });
+
+                        // 创建下载链接
+                        const url = URL.createObjectURL(content);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = this.fileName.replace('.docx', '_modified.docx');
+                        document.body.appendChild(a);
+                        a.click();
+
+                        // 清理
+                        setTimeout(() => {
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                        }, 0);
+
+                        this.showNotification('文档已下载', 'success');
+                    } catch (error) {
+                        console.error('生成文档出错:', error);
+                        this.showNotification('下载失败，请重试', 'error');
+                    } finally {
+                        this.isProcessing = false;
+                    }
+                },
+
+                // Base64转Blob
+                base64ToBlob(base64Data, contentType) {
+                    const byteCharacters = atob(base64Data);
+                    const byteArrays = [];
+
+                    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+                        const slice = byteCharacters.slice(offset, offset + 512);
+                        const byteNumbers = new Array(slice.length);
+
+                        for (let i = 0; i < slice.length; i++) {
+                            byteNumbers[i] = slice.charCodeAt(i);
+                        }
+
+                        byteArrays.push(new Uint8Array(byteNumbers));
+                    }
+
+                    return new Blob(byteArrays, { type: contentType });
+                },
+
+                // 显示通知
+                showNotification(message, type) {
+                    this.notification = {
+                        show: true,
+                        title: type === 'success' ? '成功' : type === 'warning' ? '警告' : '错误',
+                        message: message,
+                        type: type
+                    };
+
+                    setTimeout(() => this.notification.show = false, 3000);
+                },
+
+                // 读取文件为ArrayBuffer
+                readFileAsArrayBuffer(file) {
+                    return new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.onerror = () => reject(reader.error);
+                        reader.readAsArrayBuffer(file);
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+</html>
